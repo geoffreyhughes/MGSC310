@@ -1,0 +1,99 @@
+---
+title: "Problem Set 10"
+author: "Geoffrey Hughes"
+date: "12/6/2019"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+
+
+a.  Load Data 
+
+```{R}
+library("tidyverse")
+library("gapminder")
+library("gganimate")
+
+
+setwd("/Users/geoffreyhughes/Documents/MGSC_310/MGSC310/Datasets")
+getwd()
+Scotch_DF <- read.csv("Scotch_DF.csv")
+```
+
+
+```{R}
+
+
+View(Scotch_DF)
+
+dictionary <- data.frame(varlabel = c("yellow color", "amber color",
+"peaty when smelled", "sweet when smelled", "fresh when smelled",
+"fruit when smelled", "smooth texture", "smoky taste", "smooth taste",
+"sweet taste", "fruit taste", "age of whiskey", "dist", "score (rating) of whiskey",
+"region ", "district", "fraction alcohol", "islay ", "midland",
+"spey", "east", "west", "north", "lowland", "campbell", "islands"),
+varnan = c("color.yellow", "color.amber", "nose.peat", "nose.sweet",
+"nose.fresh", "nose.fruit", "body.smooth", "pal.smoke",
+"pal.smooth", "pal.sweet", "pal.fruit", "age", "dist",
+"score", "region", "district", "percent", "islay", "midland",
+"spey", "east", "west", "north", "lowland", "campbell",
+"islands"))
+
+print(dictionary)
+
+
+
+```
+
+
+b.  Familiarize & Factor
+
+* I would factor those variables that aren't in binary format; so the other ints, doubles, and strings.
+* I do this so that those variables can be used as a number in training models / other math stuff
+
+* Factor: age, dist, score, region, district, percent
+
+
+
+
+
+c. 2 plots showing how score varies with other variables
+
+```{R}
+q <- ggplot(Scotch_DF, aes(x = score, y = age)) +
+  geom_line() +
+  geom_point() +
+  transition_reveal(age) +
+  ease_aes('linear') +
+  ggtitle("Scotch rating by year") +
+  theme(legend.position = 'none')
+
+animate(q, 100, 20)
+
+
+
+p <- ggplot(Scotch_DF, aes(x = score, y = percent)) +
+  geom_line() +
+  geom_point() +
+  transition_reveal(percent) +
+  ease_aes('linear') +
+  ggtitle("Scotch rating by year") +
+  theme(legend.position = 'none')
+
+animate(p, 100, 20)
+
+
+
+```
+* In the first graph we see some peak scores around 10-15 years, and then a dropoff from 80+ score at 15 to less than 60 at 20 years. It seems scotch peaks in score around 10-15 years, and drastically lowers in score after 15 years.
+
+* From the second graph we can tell that not many Scotches are more than 45-50% alcohol (ABV). Also the only few scotches that make it past 55% rebound on score, and converge to about score = 80.
+
+
+
+
+
+

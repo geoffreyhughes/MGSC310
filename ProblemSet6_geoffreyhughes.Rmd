@@ -1,0 +1,196 @@
+---
+title: "Problem Set 6"
+author: "Geoffrey Hughes"
+date: "10/11/2019"
+output: pdf_document
+subtitle: MGSC 310, Fall 2019, Professor Hersh (BEST PROFESSOR EVER!!!)
+
+---
+
+## Question 1) What Predicts Movie Blockbusters?
+
+a. Clean and modify the data; create train / test datasets
+
+```{R}
+library('tidyverse')
+options(scipen = 50)
+set.seed(1861)
+movies <- read.csv("/Users/geoffreyhughes/Documents/MGSC_310/MGSC310/Datasets/movie_metadata.csv")
+
+movies <- movies %>% filter(budget < 400000000) %>%
+filter(content_rating != "",
+       content_rating != "Not Rated",
+       !is.na(gross))
+
+movies <- movies %>%
+  mutate(genre_main = unlist(map(strsplit(as.character(movies$genres),"\\|"),1)),
+         grossM = gross / 1000000,
+         budgetM = budget / 1000000,
+         profitM = grossM - budgetM,
+         blockbuster = ifelse(grossM > 200,1,0))
+
+movies <- movies %>% mutate(genre_main = fct_lump(genre_main,5),
+                            content_rating = fct_lump(content_rating,3),
+                            country = fct_lump(country,2),
+                            cast_total_facebook_likes000s =
+                              cast_total_facebook_likes / 1000,) %>%
+drop_na()
+top_director <- movies %>%
+  group_by(director_name) %>%
+  summarize(num_films = n()) %>%
+  top_frac(.1) %>%
+  mutate(top_director = 1) %>%
+  select(-num_films)
+
+movies <- movies %>%
+  left_join(top_director, by = "director_name") %>%
+  mutate(top_director = replace_na(top_director,0))
+
+train_idx <- sample(1:nrow(movies),size = floor(0.75*nrow(movies)))
+movies_train <- movies %>% slice(train_idx)
+movies_test <- movies %>% slice(-train_idx)
+
+```
+
+
+b. 
+
+```{R}
+#movies_train$blockbuster
+train_bb_mean <- mean(movies_train$blockbuster)
+test_bb_mean <- mean(movies_test$blockbuster)
+
+t_test <- t.test(movies_train$blockbuster, movies_test$blockbuster)
+t_test
+```
+* We get a p-value of 0.01623
+* This p-value, given a resonable alpha of 0.05, is less than the level of significance (alpha). That means that we reject the null hypothesis, which means **the difference in means is statistically significant.**
+
+
+c. Logistic Model for blockbuster variable
+```{R}
+mod1 <- glm(blockbuster ~ budgetM + top_director + cast_total_facebook_likes000s + content_rating + genre_main,
+           data = movies_train,
+           family = "binomial")
+
+preds_train <- data.frame(
+  scores_mod1 = predict(mod1, type = "response"),
+  class_pred05 = ifelse(predict(mod1,
+                                type = "response") > 0.5, 1, 0),
+  movies_train
+)
+
+preds_test <- data.frame(
+  scores_mod1 = predict(mod1, type = "response"),
+  class_pred05 = ifelse(predict(mod1,
+                                type = "response") > 0.5, 1, 0),
+  movies_train
+)
+
+
+summary(mod1)
+exp(mod1$coefficients)
+```
+
+d. Interpret coefficients: content_ratingR, genre_mainAdventure, and top_director
+* content_ratingR, genre_mainAdventure, and top_director have coefficients, -1.918355, 0.419475, and 0.607554, respectively. To find meaning from these, we simply do exp(mod1$coefficients) and subtract 1 from those new values. After that we have -0.8531516585 for content_ratingR, 0.5211634571618 for genre_mainAdventure, and 0.8359347119416 for top_director. 
+
+These translate to: 
+* Movies rated R have 85.3152% less of a chance of being a blockbuster compared to movies rated G.
+* Movies with the genre of Adventure have a 52.1163% greater chance of being a blockbuster than an action movie.
+* Movies with a top director have 83.5934% greater of a chance of being a blockbuster, when compared to movies without a top director.
+
+
+e & f. Use Leave-One-Out Cross Validation and store Predictions for train, test
+```{R}
+
+
+preds_LOOCV_store <- rep(NA, nrow(movies_train))
+preds_LOOCV_store <- nrow(movies_train)
+
+num_rows <- nrow(movies_train)
+
+for(i in 1:num_rows)
+{
+  mod2 <- glm(blockbuster ~ budgetM + top_director + cast_total_facebook_likes000s + content_rating + genre_main,
+            data = movies_train)
+  
+  preds_LOOCV_store[i] <- predict(mod2, newdata = movies_train %>% slice(i))
+}
+
+preds_LOOCV <- data.frame(
+  scores_mod2 = preds_LOOCV_store,
+  class_pred05 = ifelse(predict(mod2,
+                                type = "response") > 0.5, 1, 0),
+  movies_train
+)
+
+preds_LOOCV_test_store <- predict(mod2, newdata = movies_test)
+
+preds_test <- predict(mod1, newdata = movies_test)
+```
+
+g. Plot the ROC curves for the test predictions, in-sample training predictions, and the LOOCV predictions
+```{R}
+library(plotROC)
+
+p_LOOCV_train <- ggplot(preds_LOOCV, aes(m = scores_mod2,
+                     d = movies_train$blockbuster)) +
+  geom_roc(cutoffs.at = c(.99, 0.5, 0.2, 0.1, 0.01))
+
+p_LOOCV_train
+calc_auc(p_LOOCV_train)
+
+
+p_train <- ggplot(preds_train, aes(m = scores_mod1,
+                     d = movies_train$blockbuster)) +
+  geom_roc(cutoffs.at = c(.99, 0.5, 0.2, 0.1, 0.01))
+
+p_train
+calc_auc(p_train)
+
+
+p_test <- ggplot(preds_train, aes(m = scores_mod1,
+                     d = movies_train$blockbuster)) +
+  geom_roc(cutoffs.at = c(.99, 0.5, 0.2, 0.1, 0.01))
+
+p_test
+calc_auc(p_test)
+
+```
+* The two ROC curves that use the first model (not LOOCV) are more gradual and smoothe. But the LOOCV one has performance spikes, and is less smooth, but overall has a huge jump in TPF right before cutoff = 0.1 to over 0.75. Whereas the others are gradual, and are not even at 0.75 when cutoff = 0.1.
+
+
+h. AUC values, how do they relate to one another?
+```{R}
+calc_auc(p_train)
+calc_auc(p_test)
+calc_auc(p_LOOCV_train)
+
+
+```
+* Our LOOCV has a slightly lower AUC, but that is only because the curve is much less smooth. It start out worse, but it has a huge jump up to a high FPR later on (right before cutoff - 0.1). This can explain why it has less AUC compared to the non-LOOCV, which hold a very smooth progression. Also the train glm does better than the test glm probably because it is fit to the training data.
+
+
+i. Downsample and Upsample the data sets
+```{R}
+library("ROSE")
+
+# Downsampling
+down_data <- ROSE(blockbuster ~ budgetM + top_director + cast_total_facebook_likes000s + content_rating + genre_main,
+                  movies_train,
+                  N = 220,
+                  p = 1/2)
+
+# Upsampling
+up_data <- ROSE(blockbuster ~ budgetM + top_director + cast_total_facebook_likes000s + content_rating + genre_main,
+                movies_train,
+                N = 5000,
+                p = 1/2)
+
+
+
+```
+
+
+

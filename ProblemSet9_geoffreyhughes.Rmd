@@ -1,0 +1,214 @@
+---
+title: "Problem Set 9"
+author: "Geoffrey Hughes"
+date: "11/15/2019"
+output: pdf_document
+---
+
+
+## Can tree models predict movie profit?
+
+a. Apply cleaning code
+```{R}
+
+library("tidyverse")
+library("ElemStatLearn")
+library('partykit')
+library('magrittr')
+
+library('caret')
+library('randomForest')
+library('randomForestExplainer')
+
+
+
+options(scipen = 50)
+set.seed(1861)
+movies <- read.csv(here::here("datasets", "movie_metadata.csv"))
+movies <- movies %>% filter(budget < 4e+08) %>% filter(content_rating !=
+"", content_rating != "Not Rated", plot_keywords != "", !is.na(gross))
+movies <- movies %>% mutate(genre_main = unlist(map(strsplit(as.character(movies$genres),
+"\\|"), 1)), plot_main = unlist(map(strsplit(as.character(movies$plot_keywords),
+"\\|"), 1)), grossM = gross/1e+06, budgetM = budget/1e+06)
+movies <- movies %>% mutate(genre_main = fct_lump(genre_main,
+7), plot_first = fct_lump(plot_main, 20), content_rating = fct_lump(content_rating,
+4), country = fct_lump(country, 8), language = fct_lump(language,
+4), cast_total_facebook_likes000s = cast_total_facebook_likes/1000,
+) %>% drop_na()
+top_director <- movies %>% group_by(director_name) %>% summarize(num_films = n()) %>%
+top_frac(0.1) %>% mutate(top_director = 1) %>% select(-num_films)
+movies <- movies %>% left_join(top_director, by = "director_name") %>%
+mutate(top_director = replace_na(top_director, 0)) %>% select(-c(director_name,
+actor_2_name, gross, genres, actor_1_name, movie_title, actor_3_name,
+plot_keywords, movie_imdb_link, budget, color, aspect_ratio,
+plot_main, actor_3_facebook_likes, actor_2_facebook_likes,
+color, num_critic_for_reviews, num_voted_users, num_user_for_reviews,
+actor_2_facebook_likes))
+sapply(movies %>% select_if(is.factor), table)
+
+
+train_idx <- sample(1:nrow(movies), size = floor(0.75 * nrow(movies)))
+movies_train <- movies %>% slice(train_idx)
+movies_test <- movies %>% slice(-train_idx)
+```
+
+b. Ridgeline plot showing grossM against plot_first
+```{R}
+library('ggridges')
+ridge_p <- ggplot(movies_train, aes(grossM, plot_first, )) + geom_density_ridges() + geom_point()
+ridge_p
+
+
+```
+* Plot keywords associated with the most blockbusters (>300M) are college, battle, and other!
+
+
+c. Bagging model using 100 regression trees to predict grossM with every other variable. Bootstrap size = 2000
+```{R}
+
+
+B <- 100      
+num_b <- 2000 
+
+boot_mods <- list() 
+
+train_preds <- movies_train %>% rownames_to_column() %>% 
+  mutate(rowname = as.numeric(rowname))
+
+
+for(i in 1:B)
+{
+  
+  boot_idx <- sample(1:nrow(movies_train), 
+                     size = num_b,
+                     replace = FALSE)
+ 
+  boot_tree <- ctree(grossM ~ ., 
+                     data = movies_train %>% 
+                       slice(boot_idx)) 
+ 
+  boot_mods[[i]] <- boot_tree
+ 
+  preds_boot <- data.frame(
+    preds_boot = predict(boot_tree),
+    rowname = boot_idx 
+  )  
+  
+  names(preds_boot)[1] <- paste("preds_boot", i, sep = "")
+  
+  train_preds <- left_join(x = train_preds, 
+                           y = preds_boot,
+                           by = "rowname")
+  
+}
+
+
+```
+
+d. Summarize across the 100 bags to generate average preds for each movie
+```{R}
+
+train_preds %<>% mutate(preds_bag = 
+                          select(., preds_boot1:preds_boot100) %>% 
+                          rowMeans(na.rm = TRUE))
+
+
+
+```
+
+e. R2, RMSE, and Mean Absolute Error
+```{R}
+
+R2(train_preds$preds_bag, movies_train$grossM)
+RMSE(train_preds$preds_bag, movies_train$grossM)
+MAE(train_preds$preds_bag, movies_train$grossM)
+
+```
+* The model is not that great, having some pretty bad RMSE and MAE values for the grossM variable values. Also the R2 just passes the >0.6 threshhold which indicates the model is pretty decent, but could definitely be better.
+
+
+f. Random Forest with 500 trees! Figure out mtry
+```{R}
+
+rf_fit <- randomForest(grossM ~ .,
+                       data = movies_train,
+                       type = classification,
+                       ntree = 500,
+                       importance = TRUE,
+                       localImp = TRUE)
+
+rf_fit
+
+```
+
+
+g. Why not mtry = sqrt(16)?
+* The model without a set mtry parameter defaults to 5, and that makes sense. I ran it with 3, then 4, then 5, and 6. 5 seemed to explain the most variables with a google Mean of squared residuals. Also I believe we are supposed to round up from sqrt(16 or 17) = 4 to 5 as I think we covered in class? But yeah that is why I chose 5 as mtry. sqrt(variables) + 1. (which also is what the model defaulted to!)
+* OH! And the model actually creates more columns to use in the model, which makes the number of variables used closest to 25, and so it rounds to sqrt(~25) = 5
+
+
+
+h. How does the model improve with number of trees?
+```{R}
+plot(rf_fit)
+
+```
+* The model cuts its error in half (from 4000 to 2000) when changing from using just around 1-15 to using ~100 trees. Then at 200 trees, the error stagnates at 2000ish. So I would use 200 trees to keep both error and processing time low.
+
+
+
+i. Which variable are the most important?
+```{R}
+
+varImpPlot(rf_fit)
+
+```
+* The top 5 most important variables are: budgetM, imdb_score, content_rating, movie_facebook_likes, and country!
+
+
+j. Explore minimum depth by variable. How would I explain these findings to someone not well versed in machine learning?
+```{R}
+
+plot_min_depth_distribution(rf_fit)
+```
+* FINALLY! That took a while. Graph looks sick tho.
+* This plot shows a bunch of iterations of decision trees. The respective variables are used to predict (within the decision trees) and in this graph we can see the average depth of each variable. When a variable is in a shallow depth, that indicates it is more important in deciding the prediction in our model. For example, budgetM has a avarage depth of 1.09, which means that it rarely is far down the decision tree. This shows that budgetM is important in predicting grossM. Variables farther down, like title_year, are less important, but still boast a high average depth of 3.61, compared to a lot of other variables - think of the depth as the importance to the model's prediction of that given variable.
+
+
+
+
+k. Explore interactions between budgetM and imdb_score, and also budgetM and title_year
+```{R}
+
+plot_predict_interaction(rf_fit, movies_train, "budgetM", "imdb_score")
+plot_predict_interaction(rf_fit, movies_train, "budgetM", "title_year")
+
+```
+* These plots show the prediction of grossM when looking at two variables. For budgetM and imdb_score, it is rare to get a great grossM with just a high imdb_score or just a high budgetM, what this plot shows is that it takes a combination of both to reach high grossM. After around 200M budget, the imdb_score definitely is a deciding factor for grossM, as where budgetM > 200, and imdb_score approaches 7, 8, 9, and 10, we start to see a grossM return of 250M+!
+* In a similar way, budgetM and title_year work together to predict grossM, but in this case we can clearly see that it is only budgetM that makes a significant impact on grossM. However, there is a trend where newer movies (~2000+) require at least a budget of ~50M to not preform super poorly (see the blue cluster in the top left). This trend is not seen as drastically in earlier years, although is can still be seen to a lesser degree.
+
+
+
+l. Test preds, in-bag preds, out-of-bag preds. Patterns?!?!
+```{R}
+
+# Test Predictions
+movies_test_preds<- predict(rf_fit, newdata=movies_test)
+R2(movies_test_preds, movies_test$grossM)
+RMSE(movies_test_preds, movies_test$grossM)
+
+
+# In-Bag Predictions
+R2(train_preds$preds_bag, movies_train$grossM)
+RMSE(train_preds$preds_bag, movies_train$grossM)
+
+
+# Out-of-Bag Predictions
+movies_oob_preds <- predict(rf_fit)
+R2(movies_oob_preds, movies_train$grossM)
+RMSE(movies_oob_preds, movies_train$grossM)
+
+
+```
+* Here we see that our random forest model preforms pretty equally across all three different types of predictions. Our test and out-of-bag predictions are a bit worse than the in-bag. That is probably because the OOB predictions and test predcitons are using new data to predict the model, whereas the in-bag predictions use its own data to make predictions in the model!
+

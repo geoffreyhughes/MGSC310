@@ -1,0 +1,173 @@
+---
+title: "Problem Set 2"
+author: "Geoffrey Hughes"
+date: "9/13/2019"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+  word_document: default
+subtitle: MGSC 310, Fall 2019, Professor Hersh (BEST PROFESSOR EVER!!!)
+---
+
+
+```{r}
+library("tidyverse")
+```
+
+## Question 1) ISLR Ch. 2, Problem 2
+a. 
+* This is a regression problem because we are trying to predict quantitative numbers using the given data (seeing which factors affect CEO by a numerical amount), as opposed to trying to predict some categorical classification labels. 
+* In this problem we are interested in the **inference**, because we are trying to define the relationship between the outcome (CEO Salary) and all of the premises/inputs (record profit, number of employees, industry) as they change.
+* Here, we have the top 500 firms (n = 500), and record profit, number of employees, industry, and CEO salary as variables (p = 4).
+
+b.
+* This is a categorical problem, as we are classifying the outcome as either a *success* or *failure*. 
+* Here we are interested in **prediction**, as we are using the inputs to predict an output that is unknown at this time (new product).
+* Data is collected on 20 products (n = 20), with their variables being [whether it was a success or failure, price
+charged for the product, marketing budget, competition price, and ten other variables] so (p = 14).
+
+c.
+* Predicting % change in the USD/Euro exchange rate is a regression problem, because we are trying to quantify a specific number, not a categorical label.
+* This one is right in the wording! We are focusing on **prediction**, as we are trying to predict the outcome, given a history of % changes in the global economy.
+* We are using weekly data gathered over all of 2012, and since we have 52 weeks in a year, (n = 52).  Our variables consist of [% change in the USD/Euro, the % change in the US market, the % change in the British market, and the % change in the German market] a total of 4 variables (p = 4).
+
+## Question 2) ISLR Ch. 2, Problem 4
+a. Classification examples:
+* Predicting, based on (predictors) income, marital status, # of children, which (response) tax bracket you fall into (say there are 5: 12%, 17%, 23%, 30%, and 40% of income). This is focusing on **prediction**, as we are using these three variables (p = 3) to infer someone's tax bracket.
+* Predicting, based on (predictors) T-Cell level, X-Rays, and immune response to find out whether someone has HIV or does not. This is focusing on **prediction**, as health care professionals want to determine a patient's HIV status based on these variables.
+* Say we have 300 Olympic Gold medalists, 300 silver, and 300 bronze (response). We want to figure out which variables have the most influence on their ranking. So we measure each medalist's lung capacity, resting heart rate, BMI, and sleeping habits (predictors). This is focusing on **inference** because we want to find how each variable (x) affects the categorical placement. (Let's find how much influence each variable has for the Gold medalists, in contrast to the other medalists.)
+
+b. Regression examples:
+* We want to predict a student's final grade [0, 100] % (response) using the variables of the student's avg hours of sleep, avg hours of studying a week, and hours played of World of Warcraft (predictors). This is focusing on **prediction**, as we are using the variables to predict the outcome. Regression is useful here because we are trying to predict a specific numeric score (quantitative)!
+* We want to find out which variable most significantly affects affects a person's longest relationship in years (response). Using the variables (predictors) income, education status, and age. This is focusing on **inference**, because we are trying to decide which of those p = 3 variables most influence their longest relationship.
+* Say we want to determine a dog's lifespan (response). We use the variables # times walked a week, breed, type of food, and income of owner (predictors). This is focusing on **prediction** and should be modeled regressivly, since we want to determine a specific age (say, in dog years) based on the given variables as input.
+
+c. Cluster analysis examples:
+* If we want to determine the relationship between a person's alcohol use and their income, age, weight, and mental health.
+* If we want to determnine the relationship between people who read a lot and those who don't, depending on education and free time.
+* If we want to determine groups of people who will complete, partially complete, or not complete this assignment based on their current classes, course load, and drinking habits.
+
+```{r}
+
+```
+
+## Question 3)
+a.
+```{r}
+movies <- read.csv("/Users/geoffreyhughes/Documents/MGSC_310/MGSC310/Datasets/movie_metadata.csv")
+```
+
+b. Filter out unreasonably large budgets; create new variables with mutate()
+```{r}
+library("tidyverse")
+movies <- movies %>% filter(budget < 4e+08)
+movies <- movies %>% mutate(genre_main = unlist(map(strsplit(as.character(movies$genres),
+  "\\|"), 1)), grossM = gross/1e+06, budgetM = budget/1e+06)
+movies <- movies %>% mutate(genre_main = factor(genre_main) %>%
+  fct_drop())
+```
+
+c. Use mutate() to generate profitM and ROI (profit / budget)
+```{r}
+movies <- movies %>% mutate(profitM = grossM - budgetM)
+movies <- movies %>% mutate(ROI = profitM / budgetM)
+names(movies)
+```
+
+d. Average ROI and Histogram
+```{r}
+ggplot(data = movies, aes(x = ROI)) + 
+  geom_histogram(binwidth = 0.09) +
+  labs(x = "ROI (USD in Millions)", y = "Number of Movies", title = "Histogram of Movie Return on Investments (ROI)") +
+  xlim(0, 10)
+```
+
+e. Count and Filter out movies with ROI > 10m
+```{R}
+count(movies, ROI > 10)
+movies <- filter(movies, movies$ROI < 10)
+count(movies, ROI > 10)
+```
+As shown above, there are 145 instances where ROI > 10. Filtering them out now.
+
+f. Group movies by Genre, and Summarize them - which have highest ROI?
+```{R}
+groupby_genre_ROI <- movies %>% group_by(genre_main) %>% 
+  summarize(mean(ROI))
+groupby_genre_ROI
+```
+It appears Musicals, Westerns, and Fantasy movies have the highest ROIs.
+
+g. Plot graph the Mean ROIs for each Genre
+```{R}
+library('ggridges')
+
+
+ggplot(movies, aes(x = genre_main, y = ROI)) + 
+  geom_point() + 
+  labs(x = "Movie Genres", 
+       y = "Return on Investment (ROI) in Millions USD",
+       title = "ROI of Movies by Genre, with Red Triangle being the Mean ROI") +
+    stat_summary(
+     geom = "point",
+     fun.y = "mean",
+     col = "black",
+     size = 3,
+     shape = 24,
+     fill = "red"
+  )
+```
+
+
+h. Find Actors with top ROIs
+```{R}
+actors_ROI <- movies %>% group_by(actor_1_name) %>% 
+  summarize(actor_mean_ROI = mean(ROI),
+            actor_mean_profit = mean(profitM),
+            num_films = n())
+actors_ROI <- actors_ROI %>% arrange(desc(actor_mean_ROI))
+actors_ROI
+
+actors_ROI <- actors_ROI %>% slice(1:20)
+actors_ROI
+
+actors_ROI <- movies %>% group_by(actor_1_name) %>% 
+  summarize(actor_mean_ROI = mean(ROI),
+            actor_mean_profit = mean(profitM),
+            num_films = n())
+actors_ROI <- actors_ROI %>% arrange(desc(actor_mean_ROI))
+```
+Finally!!! It appears Matt Shively, Alice Krige, and Ian Gamazon have the highest average ROIs.
+
+i. Plot actors with the 30 highest ROIs
+```{R}
+actors_ROI <- actors_ROI %>% slice(1:30)
+ggplot(actors_ROI, aes(x = actor_mean_ROI, y = actor_1_name, fill = actor_1_name, color = actor_1_name)) + 
+  geom_point() + 
+  labs(x = "Return on Investment (ROI) in Millions USD", 
+       y = "Actors in Movies",
+       title = "ROI of Movies by Genre, with Red Triangle being the Mean ROI")
+```
+
+
+```{R}
+actors_ROI <- movies %>% group_by(actor_1_name) %>% 
+  summarize(actor_mean_ROI = mean(ROI),
+            actor_mean_profit = mean(profitM),
+            num_films = n())
+
+
+actors_ROI <- actors_ROI %>% arrange(actor_mean_ROI)
+
+actors_ROI <- actors_ROI %>% slice(1:30)
+actors_ROI <- actors_ROI %>% arrange(actor_mean_ROI)
+
+ggplot(actors_ROI, aes(x = actor_mean_ROI, y = actor_1_name, fill = actor_1_name, color = actor_1_name)) + 
+  geom_point() + 
+  labs(x = "Their Return on Investment (ROI) in Millions USD", 
+       y = "Actors in Movies",
+       title = "Actors' Average Return on Investment (ROI)")
+```
+
+WOW! gg, wp

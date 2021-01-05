@@ -1,0 +1,118 @@
+---
+title: "Problem Set 3"
+author: "Geoffrey Hughes"
+date: "9/20/2019"
+output: pdf_document
+subtitle: MGSC 310, Fall 2019, Professor Hersh (BEST PROFESSOR EVER!!!)
+
+---
+
+
+
+## Question 1) ISLR Ch. 2, Problem 3
+a.
+![ISLR Ch.2 Question 3](ISLR_Ch2_Q3.png)
+b.
+* Because the **Bayes Error** is the lowest possible error, it is plotted as constant (at 0).
+* The **Bias (Squared)** generally tends to decrease as the flexibility level increases because the model becomes more complex and better fit, and so the bias becomes less important.
+* As the flexibility of a model increases, the **variance** refers to how much the model's predictions will change with new (say test or training) data sets. So as our model increases in flexibility, the change will also increase.
+* The **Training Error** minimizes as we better fit out model's function, so as the flexibility increases, the training error will decrease.
+* **Test Error** also known as MSE (mean squared error) initially decreases to a minimum where the model is not over-fit or under-fit. This is where you want to be, and as the model becomes more complex, the it becomes over-fit, which in turn increases the test error (MSE). The model goes from underfit to overfit as flexibility increases, and the test error simply shows that parabolic relationship.
+
+## Question 2) What Predicts Movie Profitability?
+
+a. Done.
+
+b. Import movies dataset. Remove large outliers and create new variables.
+```{R}
+library('tidyverse')
+getwd()
+options(scipen = 10)
+movies <- read.csv("/Users/geoffreyhughes/Documents/MGSC_310/MGSC310/Datasets/movie_metadata.csv")
+movies <- movies %>% filter(budget < 400000000) %>% filter(content_rating != "",
+content_rating != "Not Rated")
+movies <- movies %>%
+mutate(genre_main = unlist(map(strsplit(as.character(movies$genres),"\\|"),1)),
+grossM = gross / 1000000,
+budgetM = budget / 1000000,
+profitM = grossM - budgetM,
+cast_total_facebook_likes000s = cast_total_facebook_likes / 1000)
+movies <- movies %>% mutate(genre_main = factor(genre_main) %>% fct_drop())
+```
+
+c. Split dataset into Training (80%) and Testing (20%)
+```{R}
+set.seed(1861)
+sample <- sample.int(n = nrow(movies), size = floor(0.8 * nrow(movies)), replace = FALSE)
+movies_train <- movies[sample, ]
+movies_test  <- movies[-sample, ]
+
+```
+
+d. How many rows in each dataset? (Test & Train)
+```{R}
+dim(movies_train)
+dim(movies_test)
+```
+* There are 4000 rows in the training dataset, and 1000 rows in the testing dataset!
+
+e. Create a coorelation matrix, and print out variables coorelations with ProfitM. What are most strongly coorelated with ProfitM?
+```{R}
+cormat <- cor(movies_train %>% select_if(is.numeric) %>% drop_na())
+print(cormat[, "profitM"])
+
+```
+* Some of the most influential vatiables coorelated with ProfitM are, in descending order: grossM/gross, num_voted_users, num_user_for_reviews, imdb_score, num_critic_for_reviews, and movie_facebook_likes
+
+f. *Extra Credit:* Plot the Coorelation Matrix with corrplot (I chose color)
+```{R}
+library('corrplot')
+corrplot(cormat, method = 'color', title = 'Movie Variable Coorelation Matrix', tl.cex = 0.8)
+```
+
+g. Regressive Model of profitM against imdb_score with training dataset
+```{R}
+mod1 <- lm(profitM ~ imdb_score,
+           data = movies_train)
+summary(mod1)
+```
+
+h. Interpretting the imdb_score coefficient
+* The imdb_score coefficient is 13.3319 (magnitude), which means that **for every 1 unit change of imdb_score, the movie's profitM will, on average, change by 13.3319.** Since this coefficient is positive, that means that a positive change will elicit a positive change in profitM, and silimarly a negative change to imdb_score will elicit a negative change in profitM (on average).
+
+i. Interpretting the imdb_score P-value
+* The imdb_score's P-value is 2.2e-16, or 0.0000000000000002.
+* P-value is the probability, given there is no relationship at all between the dependent and independent variables (H0), that the magnitude, or significance, (coefficient) would be this extreme or even more extreme.
+* If we assume any reasonable alpha, say 0.05, or even 0.001, we can say that **there is a relationship between imdb_score and profitM**, and we reject the null hypothesis (that there is no relationship).
+
+j. Regressive Model of profitM using imdb_score and cast_total_facebook_likes000s
+```{R}
+mod2 <- lm(profitM ~ imdb_score + cast_total_facebook_likes000s,
+           data = movies_train)
+summary(mod2)
+```
+
+k. Impact of cast_total_facebook_likes000s on profitM
+* For every 1 unit change in cast_total_facebook_likes_000s, there will be, on average, a change of 0.2071 to profitM. So a positive change of +1 to cast_total_facebook_likes000s will yield (on average) that movie 207.1k more in profit.
+
+l. Add Variable rating_simple to movies_train (G, PG, PG-13, R, Other) using fct_lump()
+```{R}
+movies_train <- movies_train %>% mutate(rating_simple = 
+                                          fct_lump(movies_train$content_rating, n = 4, ties.method = "max")) 
+table(movies_train$rating_simple)
+```
+
+m. Regressive Model of profitM using imdb_score, cast_total_facebook_likes000s & Interpret rating_simpleR's Coefficient
+```{R}
+mod3 <- lm(profitM ~ imdb_score + cast_total_facebook_likes000s + rating_simple,
+           data = movies_train)
+summary(mod3)
+
+```
+* The rating_simpleR coefficient is -23.03335, which means that if the movie is rated R, it will make (on average) -23.03335 million less profit than if it was rated G (baseline for the rating_simple categorical variable).
+
+n. Why do we not see rating_simpleG?
+* This is because with categorical variables, we can only compare them against one another, as each movie is binary as to which movie category it is in. As such, we must have a baseline coefficient for rating_simple, and in this case that is G (rating_simpleG). All of the other ratings are comparing themselves to rating_simpleG, which is therefore 0 and the baseline.
+
+
+

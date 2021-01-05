@@ -1,0 +1,176 @@
+---
+title: "Problem Set 5"
+author: "Geoffrey Hughes"
+date: "10/4/2019"
+output: pdf_document
+subtitle: MGSC 310, Fall 2019, Professor Hersh (BEST PROFESSOR EVER!!!)
+
+---
+
+
+## Question 1) Derivative of Log Odds Ratio
+
+![Logistic Function to Log Odds Ratio Proof](logit_to_odds_ratio.jpg)
+
+## Question 2) Predicting Expensive Homes
+
+a. Run the code to set libraries, data sets, etc.
+```{R}
+library(MASS)
+library(tidyverse)
+data(Boston)
+set.seed(1861)
+trainSize <- 0.75
+train_idx <- sample(1:nrow(Boston), size = floor(nrow(Boston) *
+trainSize))
+housing <- Boston %>% mutate(PriceyHome = ifelse(medv > 40, 1,
+0), chas = factor(chas))
+housing_train <- housing %>% slice(train_idx)
+housing_test <- housing %>% slice(-train_idx) 
+
+```
+
+
+b. Group-by PriceyHome, and summarize data. How do pricey homes differ from non-pricey homes?
+```{R}
+
+
+housing_train <- housing_train %>% group_by(PriceyHome)
+summarize_all(housing_train, list(mean = mean), na.rm = TRUE)
+
+```
+* I would say pricey homes and non-pricey homes differ the most in crim, zn, lstat, and medv. All of these differences are around 1:2 or more.
+
+c. 3 Graphs showing large variable differences between Pricey & Non-Pricey Homes
+```{R}
+ggplot(housing_train, aes(x = age, y = crim)) + 
+  geom_point(aes(color = PriceyHome)) +
+  labs(x = "Proportion of Units Built Prior to 1940",
+       y = "Crime per capita Rate",
+       title = "Pricey & Non-Pricey Homes Suburb Age proportion compared to per capita Crime Rate")
+
+
+ggplot(housing_train, aes(x = age, y = lstat)) + 
+  geom_point(aes(color = PriceyHome)) +
+  labs(x = "Proportion of Units Built Prior to 1940",
+       y = "% Lower Status of Population",
+       title = "Homes Suburb Age proportion compared to % Lower Status of the Population")
+
+
+ggplot(housing_train, aes(x = age, y = medv)) + 
+  geom_point(aes(color = PriceyHome)) +
+  labs(x = "Proportion of Units Built Prior to 1940",
+       y = "Median Value of Home (in 1 = $1000)",
+       title = "Homes Suburb Age proportion compared to % Lower Status of the Population")
+```
+* Newer suburbs with less than 50% of their homes built prior to 1940 have MUCH less crime than their counterpart suburbs. These homes have ~5% or less crime per capita compared to their counterparts which have anywhere from 0-65% crimes per capita. Also, as a general rule, suburbs with more older homes have much higher per capita crime rates.
+
+* Pricey Homes house a much lower % of lower status population (makes sense - takes money to live in them). And also it seems the lower status households are increasingly likely to be older homes.
+
+* This last graph shows the clear distinction of how we built the PriceyHome variable. It also definitely shows a trent that older homes are worth less than their younger counterparts.
+
+
+d. Logistic Model with chas variable
+```{R}
+logit_mod <- lm(PriceyHome ~ chas,
+                data = housing_train)
+
+summary(logit_mod)
+```
+* The chas coefficient of 0.16015 is the log of the Pr(PriceyHome) / Pr(Non-PriceyHome), so we that value and do e^(0.16015).
+Or exp(0.16015), which is 1.1736869108. That means that a home that is on the Charles River has a 117.4% greater chance to be a pricey home when compared to homes that are not on the Charles River.
+
+
+"e) Estimate the same model predicting whether a home is pricey as a function of `chas`, `crim`, `lstat`, `ptratio`, `zn`, `rm`, `tax`, `rad` and `nox`. Use the summary command over your model. Interpret the magnitude of the coefficient for `chas`. What do you conclude now about the amenity impact of living close to the Charles River?"
+e. Logistic Model with more variables
+```{R}
+logit_mod2 <- lm(PriceyHome ~ chas + crim + lstat + ptratio + zn + rm + tax + rad + nox,
+                 data = housing_train)
+
+options(scipen = 10)
+summary(logit_mod2)
+```
+* The chas coefficient went down to 0.08869, which when taken to exp() is now showing that being on the river alone only increases the chance to be a Pricey Home by ~9%. However, in relation to all the other coefficients, it is still very sizable, and is only dwarfed by rm. This means that while not the most important variable in predicting a Pricey Home, it is the 2nd best and makes an impact on the model.
+
+
+f. Use predict() to generate probability scores and class predictions (cutoff = 0.5) in both the training and test data sets
+```{R}
+training_preds_DF <- data.frame(
+  prob_scores = predict(logit_mod2, type = "response"),
+  class_pred05 = ifelse(predict(logit_mod2,
+                                type = "response") > 0.5, 1, 0),
+  housing_train
+)
+
+
+
+test_preds_DF <- data.frame(
+  prob_scores = predict(logit_mod2, newdata = housing_test, type = "response"),
+  class_pred05 = ifelse(predict(logit_mod2,
+                                newdata = housing_test,
+                                type = "response") > 0.5, 1, 0),
+  housing_test
+)
+
+```
+
+
+g. Confusion Matricies; accuracy, TP, TN, sensitivity, specificity, and false positive rate
+```{R}
+training_cormat <- cor(housing_train %>% select_if(is.numeric) %>% drop_na())
+print(training_cormat[, "PriceyHome"])
+
+test_cormat <- cor(housing_test %>% select_if(is.numeric) %>% drop_na())
+print(test_cormat[, "PriceyHome"])
+
+
+library('corrplot')
+corrplot(training_cormat, method = 'color', title = 'Training Confusion Matrix', tl.cex = 0.8)
+corrplot(test_cormat, method = 'color', title = 'Test Confusion Matrix', tl.cex = 0.8)
+
+
+#training_lift <- caret::lift(factor(PriceyHome) ~ chas + crim + lstat + ptratio + zn + rm + tax + rad + nox,
+#                   data = training_preds_DF)
+
+#test_lift <- caret::lift(factor(PriceyHome) ~ chas + crim + lstat + ptratio + zn + rm + tax + rad + nox,
+#                   data = test_preds_DF)
+
+# Here we go!
+table(training_preds_DF$PriceyHome, training_preds_DF$class_pred05)
+
+table(test_preds_DF$PriceyHome, test_preds_DF$class_pred05)
+```
+* TRAINING: Accuracy = 98.68%, TP = 353, TN = 21, Sensitivity = 0.0028, Specificity = 0.1905, False Positive Rate = 0.0476
+* TEST: Accuracy = 100%, TP = 121, TN = 6, Sensitivity = 0, Specificity = 0, False Positive Rate = 0 -- Awesome!
+
+
+h. Probability Cutoff
+* I would not adjust the probability cutoff, because out accuracy is really good. We should consider the Sensitivity and Specificity (basically, try to maximize TP & TN). Also check for False Positives, and adjust the cutoff such that all the data falls where it should be given the probability values.
+
+
+i) ROC Curves for Training and Test
+```{R}
+library(plotROC)
+
+training_ROC <- ggplot(training_preds_DF, aes(m = prob_scores,
+                     d = PriceyHome)) +
+  geom_roc(cutoffs.at = c(.99, 0.5, 0.2, 0.1, 0.01))
+training_ROC
+
+
+test_ROC <- ggplot(test_preds_DF, aes(m = prob_scores,
+                     d = PriceyHome)) +
+  geom_roc(cutoffs.at = c(.99, 0.5, 0.2, 0.1, 0.01))
+test_ROC
+
+```
+
+
+j. Calculate AUC for the training and test ROCs
+```{R}
+calc_auc(training_ROC)
+calc_auc(test_ROC)
+
+```
+* Our model may be slightly underfit, because it is getting a better score on the test data then the training data. Even though we do not have very much testing data, there still may be a problem. This may just be a result of having so much more training data than testing data, and mainly because we are working with a smaller data set than we usually do. I would probably adjust the model's independent variables so they are rm^2 or chas^2. I would toy around with those until we get better results in the training set, but overall this model has amazing accuracy, so I would not change a thing.
+

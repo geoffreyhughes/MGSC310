@@ -1,0 +1,148 @@
+---
+title: "Problem Set 4"
+author: "Geoffrey Hughes"
+date: "9/27/2019"
+output: pdf_document
+subtitle: MGSC 310, Fall 2019, Professor Hersh (BEST PROFESSOR EVER!!!)
+---
+
+## Question 1) Does Increasing a Movie's Budget Ever Pay Out?
+
+a. & b. Import data, create new variables, filter, and split
+```{R}
+library('tidyverse')
+getwd()
+options(scipen = 10)
+movies <- read.csv("/Users/geoffreyhughes/Documents/MGSC_310/MGSC310/Datasets/movie_metadata.csv")
+set.seed(1861)
+
+
+movies <- movies %>% filter(budget < 4e+08) %>% filter(content_rating !=
+"", content_rating != "Not Rated") %>% drop_na(gross)
+movies <- movies %>% mutate(genre_main = unlist(map(strsplit(as.character(movies$genres),
+"\\|"), 1)), grossM = gross/1e+06, budgetM = budget/1e+06,
+profitM = grossM - budgetM, rating_simple = fct_lump(content_rating,
+n = 4), genre_main = factor(genre_main) %>% fct_drop())
+set.seed(1861)
+train_idx <- sample(1:nrow(movies), 0.8 * nrow(movies))
+movies_train <- movies %>% slice(train_idx)
+movies_test <- movies %>% slice(-train_idx)
+```
+
+c. Linear Regression Model
+```{R}
+mod_lm <- lm(grossM ~ imdb_score + budgetM,
+             data = movies_train)
+
+summary(mod_lm)
+```
+
+d. Interpretting the budgetM coefficient
+* The budgetM coefficient is 1.0046 (magnitude), which means that **for every 1 unit change of budgetM, the movie's profitM will, on average, change by 1.0046** Since this coefficient is positive, that means that a positive change will elicit a positive change in profitM, and silimarly a negative change to budgetM will elicit a negative change in profitM (on average). So for every \$1,000,000 more invested into a movie's budget, the profit will (on average) increase by \$1,004,600.
+
+e. Linear Regression model with added variable
+```{R}
+mod_lm2 <- lm(grossM ~ imdb_score + budgetM + I(budgetM^2),
+             data = movies_train)
+
+summary(mod_lm2)
+```
+
+f. The budgetM and budgetM Squared Coefficients
+* By use of polynomial regression, we now have not only budgetM, but budgetM Squared, to try to better fit our model to the training data. What we got as outcome, 1.1277146 as a coefficient for budgetM and -0.0007161 as a coefficient for budgetM Squared, shows that in this non-linear curve, we now have a function that looks like this: y_hat(profitM) = 13.2633(imdb_score) + 1.1277(budgetM) - 0.0007(budgetM)^2. These coefficients show that although this added term tries to create a parabolic line of best fit, the extremely small budgetM Squared coefficient show that there is not much change between models, and that the relationship between profitM and budgetM is mostly linear. 
+* It also means that with a negative budgetM Squared value, there are diminishing returns on increasing budgetM, since the parabola would be bent as if you hit it from the bottom right. (Starts out with a steeper slope, then flattens out a tad bit.)
+
+g. Use margins to compare the relationship between profitM and budgetM at different budgetM levels
+```{R}
+library(margins)
+margins(mod_lm2, at = list(budgetM = seq(25, 300, by = 5)))
+
+```
+* Given movies with 25, 50, 75, 90, 100, 200, and 300 million dollars in budget, **it only makes sense to increase movie budget for movies with a budgetM of 25, 50, or 75.**
+
+h. *Extra Credit:* Cplot of marginal impact of an addictional dollar in budget for all levels of budget
+```{R}
+cplot(mod_lm2, x = "budgetM", what = "effect")
+
+```
+
+
+## Question 2) Movie Residuals and Predicted Values
+
+a. Linear Regression Model predicting for grossM using imdb_score, budgetM, the square of budgetM and rating_simple
+(Note: it says to use the movies data set and doesn't specify movies_train, so I used movies)
+```{R}
+movies$rating_simple <- relevel(movies$rating_simple, ref = "R")
+mod_lm3 <- lm(grossM ~ imdb_score + budgetM + I(budgetM^2) + rating_simple,
+              data = movies)
+
+summary(mod_lm3)
+```
+
+b. Interpret the coefficient for rating_simple = G
+* The coefficient for a movie rated G is 28.32854, and since R is our base level, we can interpret this as such: if a movie were rated G, it would (on average) make 28.32854 million more in gross earnings than a movie rated R.
+
+
+c. Use predict() to generate the predictions and residuals for both the movies_train and movies_test data sets
+```{R}
+pred_movies_train <- predict(mod_lm3 <- lm(grossM ~ imdb_score + budgetM + I(budgetM^2) + rating_simple,
+                                           data = movies_train))
+train_preds_DF <- data.frame(
+  preds = pred_movies_train,
+  resids = movies_train$grossM - predict(mod_lm3),
+  resids2 = mod_lm3$residuals
+)
+
+
+pred_movies_test <- predict(mod_lm3 <- lm(grossM ~ imdb_score + budgetM + I(budgetM^2) + rating_simple,
+                                           data = movies_test))
+test_preds_DF <- data.frame(
+  preds = pred_movies_test,
+  resids = movies_test$grossM - predict(mod_lm3),
+  resids2 = mod_lm3$residuals
+)
+```
+
+d. Plot the residuals against the predicted values for both test and train data sets
+```{R}
+ggplot(train_preds_DF, aes(x = resids, y = preds)) + geom_point() + geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") + labs(title = "Residuals vs Predicted Values for Movies Train Data Set")
+
+ggplot(test_preds_DF, aes(x = resids, y = preds)) + geom_point() + geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") + labs(title = "Residuals vs Predicted Values for Movies Test Data Set")
+
+```
+* The errors in the train data set appear to be slightly heteroskedastic, sort of forming a trapezoidal shape. 
+* Whereas the errors in the test data set are more homoskedastic, but this could be a product of having fewer values.
+* Overall, I'd say the error is **much more homoskedastic** (which is good!)
+
+e. Plot predicted values vs true values for train and test data sets
+```{R}
+ggplot(train_preds_DF, aes(x = movies_train$grossM, y = preds)) + geom_point() + geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") + labs(title = "Predicted vs True Values for Movies Train Data Set")
+
+ggplot(test_preds_DF, aes(x = movies_test$grossM, y = preds)) + geom_point() + geom_abline(intercept = 0, slope = 1, color = "red", linetype = "dashed") + labs(title = "Predicted vs True Values for Movies Test Data Set")
+```
+
+
+f. In-Sample and Out-of-Sample R2 values; is our model overfit? How do we know?
+```{R}
+library("caret")
+RMSE <- function(t, p) 
+{
+sqrt(sum(((t - p)^2)) * (1/length(t)))
+}
+
+train_RMSE <- RMSE(train_preds_DF$preds, movies_train$grossM)
+train_RMSE
+
+test_RMSE <- RMSE(test_preds_DF$preds, movies_test$grossM)
+test_RMSE
+
+postResample(pred = train_preds_DF$preds, obs = movies_train$grossM)
+
+postResample(pred = test_preds_DF$preds, obs = movies_test$grossM)
+
+```
+
+* Our function has an in-sample RMSE of 51.5195 and an R2 value of 0.4474, whereas our out-of-sample has an RMSE value of 50.605 and an R2 value of 0.528. So, since our Root Mean Squared Error is actually less in our test (out-of-sample) data set than our training (in-sample) data set, we can say that our model actually does a good job, and is **not overfit** to our train data set.
+Also, it is also important to note that the R2 value is higher in the test data set, which indicates that more of the sum of squares are explained by our regression model! If our RMSE was higher in our out-of-sample data, then we would probably be overfitting.
+Thanks, and goodnight!
+

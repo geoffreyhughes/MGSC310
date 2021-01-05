@@ -1,0 +1,136 @@
+---
+title: "Problem Set 7"
+author: "Geoffrey Hughes"
+date: "10/17/2019"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+subtitle: MGSC 310, Fall 2019, Professor Hersh (BEST PROFESSOR EVER!!!)
+---
+
+
+## Question 1) What Predicts Bike Share Usage?
+
+a. Read in the Bike Sharing Dataset file (day.csv) into Bike_DF
+```{R}
+library('tidyverse')
+library('coefplot')
+library('glmnet')
+library('glmnetUtils')
+library('leaps')
+set.seed(1861)
+
+
+Bike_DF <- read.csv("/Users/geoffreyhughes/Documents/MGSC_310/MGSC310/Datasets/Bike-Sharing-Dataset/day.csv")
+
+```
+
+b. Clean and factor the data
+```{R}
+Bike_DF$weekday <- as.factor(Bike_DF$weekday)
+levels(Bike_DF$weekday) <- c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
+
+Bike_DF$season <- as.factor(Bike_DF$season)
+levels(Bike_DF$season) <- c("Winter", "Spring", "Summer", "Fall")
+
+Bike_DF$mnth <- as.factor(Bike_DF$mnth)
+levels(Bike_DF$mnth) <- c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+
+Bike_DF$weathersit <- as.factor(Bike_DF$weathersit)
+levels(Bike_DF$weathersit) <- c("Clear", "Light", "Medium", "Heavy")
+```
+
+c. Ensure factors are correctly applied
+```{R}
+sapply(Bike_DF, is.factor)
+```
+
+d. Create any variables 
+```{R}
+Bike_DF <- Bike_DF %>% mutate(fahrenheit = (9/5) * temp + 32)
+```
+
+e. Train & Test Split of dataset
+```{R}
+train_idx <- sample(1:nrow(Bike_DF), size = floor(0.70*nrow(Bike_DF)))
+bike_train <- Bike_DF %>% slice(train_idx)
+bike_test <- Bike_DF %>% slice(-train_idx)
+
+```
+
+f. Forwards Stepwise Linear Model 
+```{R}
+fwd_fit <- regsubsets(cnt ~ season + holiday + mnth + workingday + weathersit + temp + hum + windspeed, 
+                      data = bike_train, 
+                      nvmax = 4, 
+                      method = "forward")
+summary(fwd_fit)
+```
+* The first five variables selected are: temp, weathersitheavy, seasonfall, hum, seasonspring
+
+g. Backwards Stepwise Linear Model
+```{R}
+bck_fit <- regsubsets(cnt ~ season + holiday + mnth + workingday + weathersit + temp + hum + windspeed, 
+                       data = bike_train, 
+                       nvmax = 4, 
+                       method = "backward")
+summary(bck_fit)
+
+```
+* The five predictor variables included in M5 are: temp, weathersitMedium, seasonFall, hum, and mnth9
+* These five variables are not the same for our forward and backward stepwise models. This can occur when either model finds a different local min instead of the same local or global minimum error - that's why they are not guaranteed to be the same.
+
+
+h. Ridge model and how MSE changes as we change lambda
+```{R}
+ridge_mod <- cv.glmnet(cnt ~ .,
+                       data = bike_train,
+                       alpha = 0)
+
+coef(ridge_mod)
+#coefpath(ridge_mod)
+plot(ridge_mod)
+
+
+```
+* When plotted, we see a logarithmic-type of growth for MSE as we increase lambda
+
+i. Lambda min and Lambda 1se
+```{R}
+ridge_mod$lambda.min
+
+ridge_mod$lambda.1se
+```
+* Lambda Min = 18428.13
+* Lambda 1se = 20224.85
+* lambda.min is the value for lambda at which our Mean-Squared Error is lowest. Although lambda.min is the best for minimizing error on our training data, we use lambda.1se because it does not run the same risk as being over-fit to the training model, and has less bias than lambda.min. All while still being close to the lambda.min (within one standard deviation of it). We prefer this one for our model because it should preform better on test data (and should at least have less bias).
+
+j. 
+```{R}
+as.matrix(coef(ridge_mod, s = "lambda.min"))
+as.matrix(coef(ridge_mod, s = "lambda.1se"))
+```
+* Lambda.min esxcludes 226 variables by giving them a 0 coefficient, compared to lambda.1se, which excludes 228 variables. Other than that I don't notice any obvious differences between the two lambda variable coefficients. 
+
+
+k. Lasso Model  - YEEEEHAWWW!!
+```{R}
+lasso_mod <- cv.glmnet(cnt ~ .,
+                       data = bike_train,
+                       alpha = 1)
+```
+
+
+l. Lasso Model's variables
+```{R}
+as.matrix(coef(lasso_mod, s = "lambda.min"))
+as.matrix(coef(lasso_mod, s = "lambda.1se"))
+```
+* Lasso with lambda = lambda.min uses only the variables: casual = 0.9473542 and registered = 0.9764899 (format: variable = coefficient)
+* Lasso with lambda = lambda.1se uses only the variables: casual = 0.9473542 and registered = 0.9764899
+* So, each version of the model uses 2 variables.
+
+m. Ridge or Lasso? Which to use here?
+* Ridge is generally used when your data has a lot of variables, with each of them having a slight significant impact on the outcome of the model, whereas Lasso is generally used when you have a few big-boy variables with a large significant impact on the model's outcome.
+* Here, I would definitely use a ridge model, becasue there are so many variables in this data set, and they all seem to hold a good amount of significance when we plotted them, even as lambda grew / shrunk. Lasso would exclude these important variables from the model, and in this case we should keep them by using Ridge.

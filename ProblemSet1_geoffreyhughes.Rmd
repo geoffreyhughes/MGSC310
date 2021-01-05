@@ -1,0 +1,126 @@
+---
+title: "Problem Set 1"
+author: "Geoffrey Hughes"
+date: "9/5/2019"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+  word_document: default
+subtitle: MGSC 310, Fall 2019, Professor Hersh (BEST PROFESSOR EVER!!!)
+---
+
+
+```{r}
+
+library("tidyverse")
+```
+
+## a. Getting & Setting the working directory
+```{r}
+getwd()
+setwd("/Users/geoffreyhughes/Documents/MGSC_310/MGSC310")
+```
+
+## b. Importing the downloaded dataset (movie_metadata.csv)
+```{r}
+movies <- read.csv("Datasets/movie_metadata.csv")
+```
+
+## c. Dimensions of the dataset
+5043 observations with 28 variables
+```{r}
+dim(movies)
+```
+
+## d. Variable Names
+```{r}
+names(movies)
+```
+
+ [1] "color"                     "director_name"             "num_critic_for_reviews"    "duration"                 
+ [5] "director_facebook_likes"   "actor_3_facebook_likes"    "actor_2_name"              "actor_1_facebook_likes"   
+ [9] "gross"                     "genres"                    "actor_1_name"              "movie_title"              
+[13] "num_voted_users"           "cast_total_facebook_likes" "actor_3_name"              "facenumber_in_poster"     
+[17] "plot_keywords"             "movie_imdb_link"           "num_user_for_reviews"      "language"                 
+[21] "country"                   "content_rating"            "budget"                    "title_year"               
+[25] "actor_2_facebook_likes"    "imdb_score"                "aspect_ratio"              "movie_facebook_likes" 
+
+## e. Scatterplot of IMDB on the x-axis and movie budgets on the y-axis.
+```{r}
+ggplot(movies, aes(x = imdb_score, y = budget)) + 
+  geom_point() +
+  labs(x = "IMDB Score",
+       y = "Movie Budget (USD)",
+       title = "Comparing Movie IMDB Scores with their Budgets")
+```
+
+## f. Remove movies with budgets > $400 million
+```{r}
+dim(movies)
+movies <- movies %>% filter(budget < 400000000)
+```
+Went from 5043 movies to 4539 movies!
+
+## g. Create a trendline in the ggplot
+```{r}
+ggplot(movies, aes(x = imdb_score, y = budget)) + 
+  geom_point() +
+  stat_smooth() +
+  labs(x = "IMDB Score",
+       y = "Movie Budget (USD)",
+       title = "Comparing Movie IMDB Scores with their Budgets")
+```
+There is a *very* slight positive relationship between higher budgets = higher IMDB scores, but in some places there is a negative relationship. I would say there is NOT a significant relationship.
+
+## h. Sub-plots by content_rating in ggplot
+```{r}
+movies$rating_factor <- factor(movies$content_rating)
+
+ggplot(movies, aes(x = imdb_score, y = budget)) + 
+  geom_point() +
+  stat_smooth() +
+  facet_wrap(~rating_factor, scales = "free") +
+  labs(x = "IMDB Score",
+       y = "Movie Budget (USD)",
+       title = "Comparing Movie IMDB Scores with their Budgets")
+```
+
+We see the strongest relationship between mvoie IMDB score and budget in G and PG-13 movies, which are both relatively linear positive relationships.
+
+## i. Use ggridges to produce a ridgeline density plot graph by genre
+```{r}
+library('ggridges')
+movies <- movies %>% 
+  mutate(genre_main = unlist(map(strsplit(as.character(movies$genres),"\\|"),1)),
+         grossM = gross / 1000000,
+         budgetM = budget / 1000000)
+
+ggplot(movies, aes(x = grossM, y = genre_main, fill = genre_main)) + 
+  geom_density_ridges() + 
+  scale_x_continuous(limits = c(0, 500)) +
+  labs(x = "Box Office Gross (USD Millions)", 
+       y = "Main Genre")
+```
+
+## j. A few graphs showing the relationship between movie budget and gross profit
+```{r}
+ggplot(movies, aes(x = budget, y = gross)) + 
+  geom_line() +
+  stat_smooth() +
+  labs(x = "Movie Budget (USD)",
+       y = "Movie Gross Profit (USD)",
+       title = "Comparing Movie Budgets with their Gross Profits")
+```
+This first graph shows an almost logarithmic relationship between budget and gross, which implies an increase in gross profit as budget increases, but with **diminishing returns**.
+
+```{r}
+ggplot(movies, aes(x = budget, y = gross, group = genre_main, fill = genre_main)) + 
+  geom_boxplot() +
+  labs(x = "Movie Budget (USD)",
+       y = "Movie Gross Profit (USD)",
+       title = "Comparing Movie Budgets with their Gross Profits")
+```
+From this second graph, I can see many high grossing outliers in the Action genre. Also the Crime genre seems to have one of the lowest average gross profit for such a high budget, as well as having so few high outliers (which themselves are some of the lowest outliers).
+
+
